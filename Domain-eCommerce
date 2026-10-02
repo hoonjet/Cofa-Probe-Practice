@@ -1,0 +1,111 @@
+🛒  유통/이커머스 자동 반품 시스템 최적화
+
+이 문서는 이커머스 도메인에서 악성 환불(블랙컨슈머)과 VIP 고객 보호 사이의 밸런스를 잡기 위한 AI 시뮬레이션 실행 결과입니다.
+
+1단계: 문제 정의 및 요구사항 구체화 (의도 관리)
+
+너는 대형 이커머스 A사의 'CS 총괄 팀장'이다. 최근 도입한 'AI 자동 환불 승인 시스템' 때문에 골머리를 앓고 있다. 나(AI 엔지니어)에게 불만을 토로해라. 블랙컨슈머들이 이 시스템을 악용해 옷을 입고 나서 무료 반품을 남발하고 있는데, 정작 제품 불량으로 화가 난 진짜 VIP 고객들의 반품은 봇이 기계적으로 거절해서 SNS에 악플이 달리고 있다는 점을 강조해라.
+
+"지금 자동 환불 시스템 당장 중지시켜야 할 판입니다! 얌체 같은 블랙컨슈머들이 주말에 옷 입고 월요일에 '단순 변심'으로 무조건 무료 반품을 받아내고 있어요. 시스템이 그냥 다 승인해 주니까요! 그런데 어제는 우리 VIP 고객이 진짜 옷이 찢어져서 와서 화가 잔뜩 나 사진까지 올렸는데, 봇이 '반품 규정 위반'이라며 거절을 때려버렸습니다. 고객이 인스타에 불매 운동하겠다고 난리예요. 악용하는 사람은 막고, 진짜 억울하고 화난 고객은 바로 처리해 주게 당장 고쳐주세요!"
+
+팀장님, 정말 큰일 날 뻔했네요. 블랙컨슈머를 차단하고 VIP를 보호하기 위해 다음 3가지를 명확히 짚고 넘어가겠습니다.
+
+'블랙컨슈머'로 간주할 수 있는 구체적인 반품률(예: 최근 3개월 내 구매 건수 대비 반품 건수 비율) 기준은 몇 %로 잡을까요?
+
+VIP 고객이 제품 불량 등의 문제로 '매우 화가 난 상태(부정적 감성)'임을 AI가 인지했을 때, 즉시 상담원에게 연결할까요, 아니면 무조건 선승인 처리할까요?
+
+반품 사유에 '파손', '찢어짐' 등의 치명적 키워드가 포함되어 있고 사진이 첨부된 경우, 등급에 상관없이 프리패스(승인) 시켜도 될까요?
+
+"좋습니다, 그렇게 가죠. 첫째, 최근 3개월 반품률이 50%가 넘어가면 얄짤없이 블랙컨슈머로 분류해서 봇 승인 막고 상담원 수동 검수로 넘기세요. 둘째, VIP인데 리뷰나 사유에서 '최악', '실망' 같은 부정적 감성이 강하게 나오면 절대 거절하지 말고 묻지도 따지지도 말고 일단 선승인 후환불 처리하세요. 셋째, 파손/불량 키워드에 사진까지 있으면 등급 상관없이 승인입니다. 이렇게 로직 짜서 당장 내일 적용해 봅시다."
+
+2단계: 파이프라인 구현 (기술 관리)
+
+앞서 합의된 룰을 바탕으로 환불 승인 판별 Python 함수 process_refund_request(user_data, request_info)를 작성해 줘. 반품률 50% 초과는 수동 검수(MANUAL_REVIEW), VIP의 강한 부정 감성이나 파손+사진 첨부는 자동 승인(AUTO_APPROVED)으로 처리해라. 예외 처리를 꼼꼼하게 해라.
+
+from typing import Dict, Any
+
+def process_refund_request(user_data: Dict[str, Any], request_info: Dict[str, Any]) -> Dict[str, str]:
+    """
+    고객 데이터와 환불 요청 정보를 분석하여 환불 승인 여부를 결정합니다.
+    """
+    try:
+        # 필수 데이터 검증
+        if not user_data or not request_info:
+            raise ValueError("고객 데이터 또는 환불 요청 정보가 누락되었습니다.")
+            
+        user_tier = user_data.get('tier', 'NORMAL')
+        return_rate = user_data.get('return_rate_3_months', 0.0)
+        
+        reason = request_info.get('reason', '')
+        has_photo = request_info.get('has_photo', False)
+        sentiment_score = request_info.get('sentiment_score', 0.5) # 0.0(부정) ~ 1.0(긍정)
+
+        # 치명적 키워드 리스트
+        critical_keywords = ['파손', '불량', '찢어짐', '오염']
+        has_critical_issue = any(keyword in reason for keyword in critical_keywords)
+
+        # 1. VIP 고객의 강한 부정 감성 (sentiment_score < 0.2)
+        if user_tier == 'VIP' and sentiment_score < 0.2:
+            return {"status": "AUTO_APPROVED", "reason": "VIP_HIGH_NEGATIVE_SENTIMENT"}
+
+        # 2. 파손/불량 사유 + 사진 첨부 (등급 무관)
+        if has_critical_issue and has_photo:
+            return {"status": "AUTO_APPROVED", "reason": "CRITICAL_ISSUE_WITH_PHOTO"}
+
+        # 3. 블랙컨슈머 필터링 (반품률 50% 초과) - VIP 선처리 로직 이후에 배치
+        if return_rate > 0.5:
+            return {"status": "MANUAL_REVIEW", "reason": "HIGH_RETURN_RATE_SUSPICION"}
+
+        # 그 외 일반적인 단순 변심 등은 기본 환불 절차(예: 수거 후 환불) 진행
+        return {"status": "STANDARD_PROCESS", "reason": "NORMAL_REQUEST"}
+
+    except Exception as e:
+        # 엣지 케이스 발생 시 보수적으로 수동 검수 처리
+        return {"status": "MANUAL_REVIEW", "reason": f"SYSTEM_ERROR: {str(e)}"}
+
+
+3단계: 결과 검증 및 엣지 케이스 (인지 관리)
+
+작성된 반품 로직에 대해 발생할 수 있는 '엣지 케이스' 3가지를 도출하고, 이를 검증하는 pytest 코드를 작성해 줘.
+
+🔍 엣지 케이스 3가지
+
+결측치/None 처리: return_rate_3_months 값이 0이 아니라 아예 None으로 전달된 경우 (타입 에러 방지).
+
+이상치 (범위 초과 감성 점수): sentiment_score가 0.0~1.0 사이가 아닌, NLP 모델 오류로 -1.0 이나 999.0 같은 값이 들어온 경우.
+
+빈 문자열 사유: 고객이 반품 사유(reason)를 텍스트 없이 제출하여 빈 문자열 ""이 들어온 경우 any() 함수 오작동 여부.
+
+🛠️ pytest 검증 코드
+
+import pytest
+# from refund_module import process_refund_request
+
+def test_none_return_rate():
+    """엣지 케이스 1: return_rate가 None인 경우"""
+    user_data = {"tier": "NORMAL", "return_rate_3_months": None} # None 주입
+    request_info = {"reason": "단순변심", "has_photo": False, "sentiment_score": 0.5}
+    
+    # None과 Float(0.5) 비교 시도 시 TypeError 발생 -> SYSTEM_ERROR 처리 확인
+    result = process_refund_request(user_data, request_info)
+    assert result["status"] == "MANUAL_REVIEW"
+    assert "SYSTEM_ERROR" in result["reason"]
+
+def test_extreme_sentiment_score():
+    """엣지 케이스 2: 감성 점수가 비정상적으로 낮은 경우"""
+    user_data = {"tier": "VIP", "return_rate_3_months": 0.1}
+    request_info = {"reason": "최악입니다", "has_photo": False, "sentiment_score": -99.9} 
+    
+    # 0.2보다 작으므로 조건 충족으로 VIP 선승인 되는지 확인
+    result = process_refund_request(user_data, request_info)
+    assert result["status"] == "AUTO_APPROVED"
+    assert result["reason"] == "VIP_HIGH_NEGATIVE_SENTIMENT"
+
+def test_empty_reason_string():
+    """엣지 케이스 3: 반품 사유가 빈 문자열인 경우"""
+    user_data = {"tier": "NORMAL", "return_rate_3_months": 0.1}
+    request_info = {"reason": "", "has_photo": True, "sentiment_score": 0.5}
+    
+    result = process_refund_request(user_data, request_info)
+    # 빈 문자열에는 치명적 키워드가 포함되지 않으므로 STANDARD_PROCESS 반환
+    assert result["status"] == "STANDARD_PROCESS"
